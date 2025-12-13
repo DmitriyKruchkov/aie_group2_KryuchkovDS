@@ -170,11 +170,16 @@ def top_categories(
     return result
 
 
-def compute_quality_flags(summary: DatasetSummary, missing_df: pd.DataFrame) -> Dict[str, Any]:
+
+def compute_quality_flags(summary: DatasetSummary, missing_df: pd.DataFrame, df: pd.DataFrame) -> Dict[str, Any]:
     """
     Простейшие эвристики «качества» данных:
     - слишком много пропусков;
     - подозрительно мало строк;
+    - константные колонки;
+    - высокая кардинальность категориальных признаков;
+    - дубликаты в потенциальных ID-колонках;
+    - большое количество нулей в числовых колонках;
     и т.п.
     """
     flags: Dict[str, Any] = {}
@@ -185,13 +190,60 @@ def compute_quality_flags(summary: DatasetSummary, missing_df: pd.DataFrame) -> 
     flags["max_missing_share"] = max_missing_share
     flags["too_many_missing"] = max_missing_share > 0.5
 
-    # Простейший «скор» качества
+    # Новые эвристики качества данных
+    # 1. Константные колонки (все значения одинаковые)
+    constant_columns = []
+    for col in summary.columns:
+        if col.unique == 1 and col.non_null > 0:
+            constant_columns.append(col.name)
+    flags["has_constant_columns"] = len(constant_columns) > 0
+    flags["constant_columns"] = constant_columns
+
+    # 2. Категориальные признаки с высокой кардинальностью
+    high_cardinality_categoricals = []
+    cardinality_threshold = min(100, summary.n_rows * 0.5)  # порог: 100 или 50% от числа строк
+    for col in summary.columns:
+        if not col.is_numeric and col.unique > cardinality_threshold:
+            high_cardinality_categoricals.append(col.name)
+    flags["has_high_cardinality_categoricals"] = len(high_cardinality_categoricals) > 0
+    flags["high_cardinality_categoricals"] = high_cardinality_categoricals
+
+    # 3. Подозрительные дубликаты в ID-колонках
+    suspicious_id_duplicates = []
+    id_column_names = ['id', 'user_id', 'customer_id', 'client_id', 'account_id']
+    for col in summary.columns:
+        if any(id_name in col.name.lower() for id_name in id_column_names):
+            # Проверяем дубликаты в ID-колонке
+            if col.unique < col.non_null:  # есть дубликаты
+                suspicious_id_duplicates.append(col.name)
+    flags["has_suspicious_id_duplicates"] = len(suspicious_id_duplicates) > 0
+    flags["suspicious_id_duplicates"] = suspicious_id_duplicates
+
+    # 4. Числовые колонки с большим количеством нулей
+    many_zero_columns = []
+    zero_threshold = 0.3  # 30% нулей считается много
+    for col_name in df.select_dtypes(include='number').columns:
+        zero_share = (df[col_name] == 0).mean()
+        if zero_share > zero_threshold:
+            many_zero_columns.append((col_name, zero_share))
+    flags["has_many_zero_values"] = len(many_zero_columns) > 0
+    flags["many_zero_columns"] = many_zero_columns
+
+    # Простейший «скор» качества (учитываем новые факторы)
     score = 1.0
     score -= max_missing_share  # чем больше пропусков, тем хуже
     if summary.n_rows < 100:
         score -= 0.2
     if summary.n_cols > 100:
         score -= 0.1
+    if flags["has_constant_columns"]:
+        score -= 0.1  # штраф за константные колонки
+    if flags["has_high_cardinality_categoricals"]:
+        score -= 0.1  # штраф за высокую кардинальность
+    if flags["has_suspicious_id_duplicates"]:
+        score -= 0.2  # больший штраф за дубликаты ID
+    if flags["has_many_zero_values"]:
+        score -= 0.05  # небольшой штраф за много нулей
 
     score = max(0.0, min(1.0, score))
     flags["quality_score"] = score
