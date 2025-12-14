@@ -1,244 +1,227 @@
+"""
+HTTP-сервис для анализа качества датасетов на базе FastAPI.
+"""
 from __future__ import annotations
 
-from time import perf_counter
+import time
+from io import BytesIO
+from typing import Any, Dict
 
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from .core import compute_quality_flags, missing_table, summarize_dataset
-
-app = FastAPI(
-    title="AIE Dataset Quality API",
-    version="0.2.0",
-    description=(
-        "HTTP-сервис-заглушка для оценки готовности датасета к обучению модели. "
-        "Использует простые эвристики качества данных вместо настоящей ML-модели."
-    ),
-    docs_url="/docs",
-    redoc_url=None,
+from .core import (
+    compute_quality_flags,
+    missing_table,
+    summarize_dataset,
 )
 
-
-# ---------- Модели запросов/ответов ----------
+app = FastAPI(
+    title="EDA Quality Service",
+    description="HTTP-сервис для анализа качества датасетов",
+    version="0.1.0",
+)
 
 
 class QualityRequest(BaseModel):
-    """Агрегированные признаки датасета – 'фичи' для заглушки модели."""
+    """Запрос для оценки качества данных."""
 
-    n_rows: int = Field(..., ge=0, description="Число строк в датасете")
-    n_cols: int = Field(..., ge=0, description="Число колонок")
-    max_missing_share: float = Field(
-        ...,
-        ge=0.0,
-        le=1.0,
-        description="Максимальная доля пропусков среди всех колонок (0..1)",
-    )
-    numeric_cols: int = Field(
-        ...,
-        ge=0,
-        description="Количество числовых колонок",
-    )
-    categorical_cols: int = Field(
-        ...,
-        ge=0,
-        description="Количество категориальных колонок",
-    )
+    n_rows: int
+    n_cols: int
+    max_missing_share: float
+    too_few_rows: bool = False
+    too_many_columns: bool = False
 
 
 class QualityResponse(BaseModel):
-    """Ответ заглушки модели качества датасета."""
+    """Ответ с оценкой качества данных."""
 
-    ok_for_model: bool = Field(
-        ...,
-        description="True, если датасет считается достаточно качественным для обучения модели",
-    )
-    quality_score: float = Field(
-        ...,
-        ge=0.0,
-        le=1.0,
-        description="Интегральная оценка качества данных (0..1)",
-    )
-    message: str = Field(
-        ...,
-        description="Человекочитаемое пояснение решения",
-    )
-    latency_ms: float = Field(
-        ...,
-        ge=0.0,
-        description="Время обработки запроса на сервере, миллисекунды",
-    )
-    flags: dict[str, bool] | None = Field(
-        default=None,
-        description="Булевы флаги с подробностями (например, too_few_rows, too_many_missing)",
-    )
-    dataset_shape: dict[str, int] | None = Field(
-        default=None,
-        description="Размеры датасета: {'n_rows': ..., 'n_cols': ...}, если известны",
-    )
+    ok_for_model: bool
+    quality_score: float
+    latency_ms: float
+    flags: Dict[str, Any]
 
 
-# ---------- Системный эндпоинт ----------
+class QualityFlagsResponse(BaseModel):
+    """Ответ с полным набором флагов качества."""
+
+    flags: Dict[str, Any]
 
 
-@app.get("/health", tags=["system"])
-def health() -> dict[str, str]:
-    """Простейший health-check сервиса."""
-    return {
-        "status": "ok",
-        "service": "dataset-quality",
-        "version": "0.2.0",
-    }
-
-
-# ---------- Заглушка /quality по агрегированным признакам ----------
-
-
-@app.post("/quality", response_model=QualityResponse, tags=["quality"])
-def quality(req: QualityRequest) -> QualityResponse:
+@app.get("/health")
+async def health() -> Dict[str, str]:
     """
-    Эндпоинт-заглушка, который принимает агрегированные признаки датасета
-    и возвращает эвристическую оценку качества.
+    Проверка работоспособности сервиса.
     """
+    return {"status": "ok"}
 
-    start = perf_counter()
 
-    # Базовый скор от 0 до 1
-    score = 1.0
+@app.post("/quality", response_model=QualityResponse)
+async def quality(request: QualityRequest) -> QualityResponse:
+    """
+    Оценка качества данных на основе входных параметров.
 
-    # Чем больше пропусков, тем хуже
-    score -= req.max_missing_share
+    Принимает JSON с параметрами датасета и возвращает оценку качества.
+    """
+    start_time = time.time()
 
-    # Штраф за слишком маленький датасет
-    if req.n_rows < 1000:
-        score -= 0.2
+    # Простая эвристика: ok_for_model если нет критических проблем
+    ok_for_model = (
+        not request.too_few_rows
+        and not request.too_many_columns
+        and request.max_missing_share < 0.5
+    )
 
-    # Штраф за слишком широкий датасет
-    if req.n_cols > 100:
-        score -= 0.1
+    # Простой скор качества
+    quality_score = 1.0
+    if request.too_few_rows:
+        quality_score -= 0.2
+    if request.too_many_columns:
+        quality_score -= 0.1
+    quality_score -= request.max_missing_share
+    quality_score = max(0.0, min(1.0, quality_score))
 
-    # Штрафы за перекос по типам признаков (если есть числовые и категориальные)
-    if req.numeric_cols == 0 and req.categorical_cols > 0:
-        score -= 0.1
-    if req.categorical_cols == 0 and req.numeric_cols > 0:
-        score -= 0.05
-
-    # Нормируем скор в диапазон [0, 1]
-    score = max(0.0, min(1.0, score))
-
-    # Простое решение "ок / не ок"
-    ok_for_model = score >= 0.7
-    if ok_for_model:
-        message = "Данных достаточно, модель можно обучать (по текущим эвристикам)."
-    else:
-        message = "Качество данных недостаточно, требуется доработка (по текущим эвристикам)."
-
-    latency_ms = (perf_counter() - start) * 1000.0
-
-    # Флаги, которые могут быть полезны для последующего логирования/аналитики
     flags = {
-        "too_few_rows": req.n_rows < 1000,
-        "too_many_columns": req.n_cols > 100,
-        "too_many_missing": req.max_missing_share > 0.5,
-        "no_numeric_columns": req.numeric_cols == 0,
-        "no_categorical_columns": req.categorical_cols == 0,
+        "too_few_rows": request.too_few_rows,
+        "too_many_columns": request.too_many_columns,
+        "too_many_missing": request.max_missing_share > 0.5,
+        "max_missing_share": request.max_missing_share,
     }
 
-    # Примитивный лог — на семинаре можно обсудить, как это превратить в нормальный logger
-    print(
-        f"[quality] n_rows={req.n_rows} n_cols={req.n_cols} "
-        f"max_missing_share={req.max_missing_share:.3f} "
-        f"score={score:.3f} latency_ms={latency_ms:.1f} ms"
-    )
+    latency_ms = (time.time() - start_time) * 1000
 
     return QualityResponse(
         ok_for_model=ok_for_model,
-        quality_score=score,
-        message=message,
+        quality_score=quality_score,
         latency_ms=latency_ms,
         flags=flags,
-        dataset_shape={"n_rows": req.n_rows, "n_cols": req.n_cols},
     )
 
 
-# ---------- /quality-from-csv: реальный CSV через нашу EDA-логику ----------
-
-
-@app.post(
-    "/quality-from-csv",
-    response_model=QualityResponse,
-    tags=["quality"],
-    summary="Оценка качества по CSV-файлу с использованием EDA-ядра",
-)
-async def quality_from_csv(file: UploadFile = File(...)) -> QualityResponse:
+@app.post("/quality-from-csv", response_model=QualityResponse)
+async def quality_from_csv(
+    file: UploadFile = File(..., description="CSV-файл для анализа"),
+) -> QualityResponse:
     """
-    Эндпоинт, который принимает CSV-файл, запускает EDA-ядро
-    (summarize_dataset + missing_table + compute_quality_flags)
-    и возвращает оценку качества данных.
+    Оценка качества данных из загруженного CSV-файла.
 
-    Именно это по сути связывает S03 (CLI EDA) и S04 (HTTP-сервис).
+    Читает CSV-файл, анализирует его и возвращает оценку качества.
     """
-
-    start = perf_counter()
-
-    if file.content_type not in ("text/csv", "application/vnd.ms-excel", "application/octet-stream"):
-        # content_type от браузера может быть разным, поэтому проверка мягкая
-        # но для демонстрации оставим простую ветку 400
-        raise HTTPException(status_code=400, detail="Ожидается CSV-файл (content-type text/csv).")
+    start_time = time.time()
 
     try:
-        # FastAPI даёт file.file как file-like объект, который можно читать pandas'ом
-        df = pd.read_csv(file.file)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"Не удалось прочитать CSV: {exc}")
+        # Читаем файл
+        contents = await file.read()
+        if not contents:
+            raise HTTPException(status_code=400, detail="Файл пуст")
 
-    if df.empty:
-        raise HTTPException(status_code=400, detail="CSV-файл не содержит данных (пустой DataFrame).")
+        # Парсим CSV
+        try:
+            df = pd.read_csv(BytesIO(contents))
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Не удалось прочитать CSV: {str(e)}"
+            ) from e
 
-    # Используем EDA-ядро из S03
-    summary = summarize_dataset(df)
-    missing_df = missing_table(df)
-    flags_all = compute_quality_flags(summary, missing_df)
+        if df.empty:
+            raise HTTPException(status_code=400, detail="CSV-файл не содержит данных")
 
-    # Ожидаем, что compute_quality_flags вернёт quality_score в [0,1]
-    score = float(flags_all.get("quality_score", 0.0))
-    score = max(0.0, min(1.0, score))
-    ok_for_model = score >= 0.7
+        # Анализируем датасет
+        summary = summarize_dataset(df)
+        missing_df = missing_table(df)
+        flags = compute_quality_flags(summary, missing_df, df)
 
-    if ok_for_model:
-        message = "CSV выглядит достаточно качественным для обучения модели (по текущим эвристикам)."
-    else:
-        message = "CSV требует доработки перед обучением модели (по текущим эвристикам)."
+        # Определяем ok_for_model
+        ok_for_model = (
+            not flags.get("too_few_rows", False)
+            and not flags.get("too_many_columns", False)
+            and not flags.get("too_many_missing", False)
+        )
 
-    latency_ms = (perf_counter() - start) * 1000.0
+        quality_score = flags.get("quality_score", 0.0)
 
-    # Оставляем только булевы флаги для компактности
-    flags_bool: dict[str, bool] = {
-        key: bool(value)
-        for key, value in flags_all.items()
-        if isinstance(value, bool)
-    }
+        latency_ms = (time.time() - start_time) * 1000
 
-    # Размеры датасета берём из summary (если там есть поля n_rows/n_cols),
-    # иначе — напрямую из DataFrame.
+        # Формируем ответ с основными флагами
+        response_flags = {
+            "too_few_rows": flags.get("too_few_rows", False),
+            "too_many_columns": flags.get("too_many_columns", False),
+            "too_many_missing": flags.get("too_many_missing", False),
+            "max_missing_share": flags.get("max_missing_share", 0.0),
+        }
+
+        return QualityResponse(
+            ok_for_model=ok_for_model,
+            quality_score=quality_score,
+            latency_ms=latency_ms,
+            flags=response_flags,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}"
+        ) from e
+
+
+@app.post("/quality-flags-from-csv", response_model=QualityFlagsResponse)
+async def quality_flags_from_csv(
+    file: UploadFile = File(..., description="CSV-файл для анализа"),
+) -> QualityFlagsResponse:
+    """
+    Полный набор флагов качества данных из загруженного CSV-файла.
+
+    Возвращает все флаги качества, включая новые эвристики из HW03:
+    - has_constant_columns
+    - has_high_cardinality_categoricals
+    - has_suspicious_id_duplicates
+    - has_many_zero_values
+    """
     try:
-        n_rows = int(getattr(summary, "n_rows"))
-        n_cols = int(getattr(summary, "n_cols"))
-    except AttributeError:
-        n_rows = int(df.shape[0])
-        n_cols = int(df.shape[1])
+        # Читаем файл
+        contents = await file.read()
+        if not contents:
+            raise HTTPException(status_code=400, detail="Файл пуст")
 
-    print(
-        f"[quality-from-csv] filename={file.filename!r} "
-        f"n_rows={n_rows} n_cols={n_cols} score={score:.3f} "
-        f"latency_ms={latency_ms:.1f} ms"
-    )
+        # Парсим CSV
+        try:
+            df = pd.read_csv(BytesIO(contents))
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Не удалось прочитать CSV: {str(e)}"
+            ) from e
 
-    return QualityResponse(
-        ok_for_model=ok_for_model,
-        quality_score=score,
-        message=message,
-        latency_ms=latency_ms,
-        flags=flags_bool,
-        dataset_shape={"n_rows": n_rows, "n_cols": n_cols},
-    )
+        if df.empty:
+            raise HTTPException(status_code=400, detail="CSV-файл не содержит данных")
+
+        # Анализируем датасет
+        summary = summarize_dataset(df)
+        missing_df = missing_table(df)
+        all_flags = compute_quality_flags(summary, missing_df, df)
+
+        # Формируем ответ только с булевыми флагами (без детальных списков)
+        response_flags = {
+            "too_few_rows": all_flags.get("too_few_rows", False),
+            "too_many_columns": all_flags.get("too_many_columns", False),
+            "too_many_missing": all_flags.get("too_many_missing", False),
+            "has_constant_columns": all_flags.get("has_constant_columns", False),
+            "has_high_cardinality_categoricals": all_flags.get(
+                "has_high_cardinality_categoricals", False
+            ),
+            "has_suspicious_id_duplicates": all_flags.get(
+                "has_suspicious_id_duplicates", False
+            ),
+            "has_many_zero_values": all_flags.get("has_many_zero_values", False),
+        }
+
+        return QualityFlagsResponse(flags=response_flags)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}"
+        ) from e
+

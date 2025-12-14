@@ -3,19 +3,19 @@ requires = ["setuptools >= 77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "eda-cli"
-version = "0.2.0"
+name = "s03"
+version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.123.3",
+    "fastapi>=0.115.0",
     "matplotlib>=3.10.7",
     "pandas>=2.3.3",
     "pytest>=9.0.1",
-    "python-multipart>=0.0.20",
+    "python-multipart>=0.0.12",
     "typer>=0.20.0",
-    "uvicorn[standard]>=0.38.0",
+    "uvicorn[standard]>=0.32.0",
 ]
 
 [project.scripts]
