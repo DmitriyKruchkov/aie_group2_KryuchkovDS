@@ -1,0 +1,14 @@
+{
+  "dataset": "ds1",
+  "kmeans_k": 2,
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "pairwise_ari_mean": 1.0,
+  "pairwise_ari_min": 1.0,
+  "pairwise_ari_max": 1.0
+}

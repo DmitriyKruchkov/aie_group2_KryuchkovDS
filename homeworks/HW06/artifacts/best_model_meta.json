@@ -1,0 +1,23 @@
+{
+  "model_name": "gradient_boosting",
+  "selection_metric": "roc_auc",
+  "best_params": {
+    "learning_rate": 0.1,
+    "max_depth": 3,
+    "n_estimators": 100
+  },
+  "test_metrics": {
+    "accuracy": 0.9752,
+    "balanced_accuracy": 0.7672409370286383,
+    "f1": 0.6804123711340206,
+    "precision_pos": 0.9295774647887324,
+    "recall_pos": 0.5365853658536586,
+    "roc_auc": 0.8894076361882678,
+    "average_precision": 0.7258169520297099
+  },
+  "dataset": "S06-hw-dataset-04.csv",
+  "random_state": 42,
+  "train_size": 20000,
+  "test_size": 5000,
+  "n_features": 60
+}
