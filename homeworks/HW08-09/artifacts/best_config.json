@@ -1,0 +1,19 @@
+{
+  "experiment_id": "E4",
+  "dataset": "EMNIST-balanced",
+  "seed": 42,
+  "hidden_dims": [
+    256,
+    128
+  ],
+  "num_classes": 47,
+  "activation": "relu",
+  "use_batchnorm": true,
+  "dropout_p": 0.0,
+  "optimizer": "Adam",
+  "lr": 0.001,
+  "weight_decay": 0,
+  "early_stopping_patience": 5,
+  "best_val_accuracy": 0.8477,
+  "regularization": "BatchNorm"
+}
