@@ -1,0 +1,20 @@
+{
+  "seed": 42,
+  "device": "cpu",
+  "window_size": 168,
+  "horizon": 1,
+  "hidden_size": 32,
+  "num_layers": 1,
+  "dropout": 0.0,
+  "batch_size": 64,
+  "learning_rate": 0.001,
+  "max_epochs": 25,
+  "epochs_trained": 19,
+  "best_epoch": 14,
+  "best_val_metrics": {
+    "mae": 6.545851082036523,
+    "rmse": 8.261869100245763,
+    "mape": 4.413822431528374
+  },
+  "scaler": "StandardScaler(train target only)"
+}

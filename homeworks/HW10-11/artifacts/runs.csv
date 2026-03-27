@@ -1,0 +1,7 @@
+experiment_id,task,dataset,seed,model_summary,optimizer,lr,epochs_trained,best_val_accuracy,test_accuracy,precision,recall,mean_iou,notes
+C1,classification,Flowers102,42,"SimpleCNN, base transforms",Adam,0.001,10,0.2529411764705882,,,,,full
+C2,classification,Flowers102,42,"SimpleCNN, augmentations",Adam,0.001,10,0.2088235294117647,,,,,augmentations
+C3,classification,Flowers102,42,"ResNet18 pretrained, frozen backbone",Adam,0.0003,6,0.7029411764705882,,,,,head_only
+C4,classification,Flowers102,42,"ResNet18 pretrained, layer4+fc fine-tune",Adam,0.0001,6,0.8892156862745098,0.8690844039681249,,,,partial_finetune
+V1,segmentation,OxfordIIITPet,42,DeepLabV3-ResNet50 pretrained,,,0,,,0.9787253899549458,0.8608366034523036,0.8437523914557921,pet_score>=0.35
+V2,segmentation,OxfordIIITPet,42,DeepLabV3-ResNet50 pretrained,,,0,,,0.9684293556088104,0.8392352122771951,0.827795710301779,pet_score>=0.50 + remove_small_components(min_size=512)
