@@ -3,8 +3,8 @@
 ## 1. Кратко: что сделано
 
 - Для части A выбран `Flowers102`, потому что у него есть официальный `train/val/test` split и на малом обучающем наборе хорошо видно, как работают CNN и transfer learning.
-- Для части B выбран `OxfordIIITPet`, трек `segmentation`, потому что у датасета естественная бинарная постановка: питомец против фона.
-- В части A сравнивались `C1-C4`: базовая CNN, та же CNN с аугментациями, pretrained `ResNet18` head-only и pretrained `ResNet18` partial fine-tuning.
+- Для части B явно выбран трек `segmentation`; `detection` track в этой работе не использовался, потому что у `OxfordIIITPet` естественная бинарная постановка: питомец против фона.
+- В части A сравнивались `C1-C4`: базовая CNN, та же CNN с аугментациями, pretrained `ResNet18` head-only и pretrained `ResNet18` partial fine-tuning на `models.ResNet18_Weights.DEFAULT` (ImageNet pretrained weights).
 - Во второй части сравнивались два режима постобработки `V1-V2` на pretrained `DeepLabV3_ResNet50`.
 
 ## 2. Среда и воспроизводимость
@@ -29,7 +29,8 @@
 ### 3.2. Часть B: structured vision
 
 - Датасет: `OxfordIIITPet`
-- Трек: `segmentation`
+- Выбранный трек второй части: `segmentation`
+- `detection` track: не используется
 - Что считается ground truth: бинарная маска питомца, полученная из trimap (`foreground + contour` против фона).
 - Какие предсказания использовались: сумма вероятностей классов `cat` и `dog` у pretrained `DeepLabV3_ResNet50`, далее бинаризация и постобработка.
 Датасет подходит для бинарной постановки «питомец против фона», а pretrained VOC/COCO segmentation-модель уже знает классы `cat` и `dog`. Поэтому можно не дообучать сеть и сосредоточиться на корректной постановке foreground, визуализации и метриках. Для оценки использован фиксированный поднабор из `60` изображений official test split.
@@ -38,8 +39,8 @@
 
 - C1 (simple-cnn-base): `SimpleCNN` из четырёх сверточных блоков с `BatchNorm`, без аугментаций.
 - C2 (simple-cnn-aug): та же `SimpleCNN`, но train split проходит через `RandomResizedCrop`, `RandomHorizontalFlip` и `ColorJitter`.
-- C3 (resnet18-head-only): pretrained `ResNet18`, backbone заморожен, обучается только `fc`.
-- C4 (resnet18-finetune): pretrained `ResNet18`, разморожены `layer4 + fc`, что даёт частичное fine-tuning.
+- C3 (resnet18-head-only): pretrained `ResNet18` на `models.ResNet18_Weights.DEFAULT`, backbone заморожен, обучается только `fc`.
+- C4 (resnet18-finetune): pretrained `ResNet18` на `models.ResNet18_Weights.DEFAULT`, разморожены `layer4 + fc`, что даёт частичное fine-tuning.
 
 - Loss: `CrossEntropyLoss`
 - Optimizer(ы): `Adam`
@@ -51,7 +52,7 @@
 
 ### Если выбран detection track
 
-- Не используется.
+- Не используется, потому что выбранный трек второй части зафиксирован как `segmentation`.
 - V1: `—`
 - V2: `—`
 - Как считался IoU: `—`

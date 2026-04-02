@@ -9,6 +9,7 @@
   "use_augmentations": false,
   "weight_decay": 0.0001,
   "seed": 42,
+  "pretrained_weights": "ResNet18_Weights.IMAGENET1K_V1",
   "best_val_accuracy": 0.8892156862745098,
   "test_accuracy": 0.8690844039681249,
   "classification_dataset": "Flowers102",
