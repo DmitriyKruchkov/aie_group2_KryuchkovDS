@@ -1,0 +1,10 @@
+polars>=0.20
+numpy>=1.26
+scikit-learn>=1.4
+torch>=2.0
+holidays>=0.46
+pyyaml>=6.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+httpx>=0.27        # required by fastapi TestClient
+pytest>=8.0
