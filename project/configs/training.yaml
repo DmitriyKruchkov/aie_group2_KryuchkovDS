@@ -1,0 +1,13 @@
+metrics:
+  best_mae: 0.0101
+model:
+  dropout: 0.3062587613127175
+  hidden_size: 64
+  input_size: 23
+  num_layers: 1
+training:
+  batch_size: 32
+  epochs: 50
+  horizon: 4
+  learning_rate: 0.00087510170922976
+  seq_len: 14
